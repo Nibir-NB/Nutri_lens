@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nutri-Lens</title>
+    <style>
+        :root {
+            --score-color-vbad: #e74c3c;    /* Red */
+            --score-color-bad: #e67e22;     /* Orange */
+            --score-color-neutral: #f1c40f; /* Yellow */
+            --score-color-good: #2ecc71;    /* Light Green */
+            --score-color-vgood: #1abc9c;   /* Bright Green */
+            --glow-color: transparent; /* This will be set by JS */
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f2f5;
+            margin: 0;
+            overflow: hidden; 
+        }
+
+        .background-glow {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, var(--glow-color) 0%, transparent 60%);
+            opacity: 0;
+            transition: opacity 0.8s ease-out;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .main-container.show-results ~ .background-glow {
+            opacity: 0.2;
+        }
+
+        .main-container {
+            position: relative;
+            width: 90%;
+            max-width: 500px;
+            z-index: 1;
+        }
+
+        /* --- Sections for Upload and Result --- */
+        .upload-section, .result-section {
+            background-color: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: all 0.5s ease-in-out;
+        }
+
+        /* --- State management for shrinking/growing --- */
+        .result-section {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            opacity: 0;
+            transform: scale(0.8);
+            pointer-events: none; 
+        }
+
+        .main-container.show-results .upload-section {
+            opacity: 0;
+            transform: scale(0.8);
+            pointer-events: none;
+        }
+
+        .main-container.show-results .result-section {
+            opacity: 1;
+            transform: scale(1);
+            pointer-events: all;
+        }
+        
+        /* --- Component Styling --- */
+        h1 { color: #333; margin-top: 0; }
+        p { color: #666; margin-bottom: 30px; }
+        input[type="file"] { display: none; }
+
+        .file-upload-label {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            display: inline-block;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .file-upload-label:hover { background-color: #0056b3; }
+
+        #analyze-button, #reset-button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+            transition: background-color 0.3s;
+        }
+        #analyze-button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #reset-button { background-color: #6c757d; }
+        #reset-button:hover { background-color: #5a6268; }
+        #file-name { color: #555; font-style: italic; height: 20px; }
+
+        /* --- Circular Dial Styling --- */
+        .dial-container {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+            position: relative;
+        }
+        .dial-ring {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 15px solid var(--score-color-neutral); /* Default color */
+            box-sizing: border-box;
+            transition: border-color 0.5s ease-out;
+        }
+        .dial-mask {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #score-emoji {
+            font-size: 5rem;
+            transition: transform 0.5s;
+        }
+        
+        .dial-flash {
+            position: absolute;
+            top: -15px; left: -15px;
+            width: calc(100% + 30px); height: calc(100% + 30px);
+            border-radius: 50%;
+            opacity: 0;
+            transform: scale(0);
+        }
+        .dial-flash.animate {
+            animation: flash-effect 0.8s ease-out;
+        }
+        @keyframes flash-effect {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.1); opacity: 0.7; }
+            100% { transform: scale(1.2); opacity: 0; }
+        }
+
+        #score-text-display {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-top: 15px;
+            color: #333;
+        }
+
+        #result-details {
+            margin-top: 20px;
+            text-align: left;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        #result-details h4 { margin-bottom: 5px; }
+        #result-details ul { margin-top: 0; padding-left: 20px; }
+    </style>
+</head>
+<body>
+    <div class="main-container" id="main-container">
+        
+        <div class="upload-section">
+            <h1>Welcome to Nutri-Lens</h1>
+            <p>Upload a photo of an ingredient list to get its health score.</p>
+            <form id="upload-form">
+                <label for="image-upload" class="file-upload-label">Select Image</label>
+                <input type="file" id="image-upload" name="image" accept="image/*">
+                <p id="file-name">No file chosen</p>
+                <button type="submit" id="analyze-button" disabled>Analyze</button>
+            </form>
+        </div>
+
+        <div class="result-section">
+            <div class="dial-container">
+                <div class="dial-ring" id="dial-ring"></div>
+                <div class="dial-flash" id="dial-flash"></div>
+                <div class="dial-mask">
+                    <span id="score-emoji"></span>
+                </div>
+            </div>
+            <div id="score-text-display">0 / 10</div>
+            <div id="result-details"></div>
+            <button id="reset-button">Analyze Another Product</button>
+        </div>
+
+    </div>
+    
+    <div class="background-glow" id="background-glow"></div>
+
+    <script>
+        // DOM Elements
+        const mainContainer = document.getElementById('main-container');
+        const form = document.getElementById('upload-form');
+        const imageInput = document.getElementById('image-upload');
+        const analyzeButton = document.getElementById('analyze-button');
+        const fileNameSpan = document.getElementById('file-name');
+        
+        const scoreEmoji = document.getElementById('score-emoji');
+        const resultDetailsDiv = document.getElementById('result-details');
+        const resetButton = document.getElementById('reset-button');
+        const scoreTextDisplay = document.getElementById('score-text-display');
+        const dialFlash = document.getElementById('dial-flash');
+        const dialRing = document.getElementById('dial-ring');
+        const backgroundGlow = document.getElementById('background-glow');
+        const root = document.documentElement;
+
+        // Event Listeners
+        imageInput.addEventListener('change', () => {
+            if (imageInput.files.length > 0) {
+                analyzeButton.disabled = false;
+                fileNameSpan.textContent = imageInput.files[0].name;
+            } else {
+                analyzeButton.disabled = true;
+                fileNameSpan.textContent = 'No file chosen';
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('image', imageInput.files[0]);
+
+            mainContainer.classList.add('show-results');
+            scoreEmoji.textContent = '🤔';
+            scoreTextDisplay.textContent = 'Analyzing...';
+            resultDetailsDiv.innerHTML = '<p style="text-align:center;">Please wait...</p>';
+
+            try {
+                const response = await fetch('http://127.0.0.1:5000/analyze', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    updateResultView(data);
+                } else {
+                    displayError(data.error);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                displayError('Could not connect to the server.');
+            }
+        });
+
+        resetButton.addEventListener('click', () => {
+            mainContainer.classList.remove('show-results');
+            form.reset();
+            fileNameSpan.textContent = 'No file chosen';
+            analyzeButton.disabled = true;
+        });
+
+        // UI Update Functions
+        function updateResultView(data) {
+            const score = data.score;
+            
+            // 1. Determine Emoji and Color
+            let emoji = '😐';
+            let scoreColor = 'var(--score-color-neutral)';
+            if (score <= 2) { emoji = '🤢'; scoreColor = 'var(--score-color-vbad)'; }
+            else if (score <= 4) { emoji = '😟'; scoreColor = 'var(--score-color-bad)'; }
+            else if (score <= 6) { emoji = '😐'; scoreColor = 'var(--score-color-neutral)'; }
+            else if (score <= 8) { emoji = '🙂'; scoreColor = 'var(--score-color-good)'; }
+            else { emoji = '😄'; scoreColor = 'var(--score-color-vgood)'; }
+
+            // 2. Update UI elements
+            scoreEmoji.textContent = emoji;
+            scoreTextDisplay.textContent = `${score} / 10`;
+            scoreTextDisplay.style.color = scoreColor;
+            dialRing.style.borderColor = scoreColor;
+            root.style.setProperty('--glow-color', scoreColor);
+            
+            // 3. Trigger Flash Animation
+            dialFlash.style.backgroundColor = scoreColor;
+            dialFlash.classList.add('animate');
+            setTimeout(() => dialFlash.classList.remove('animate'), 800);
+
+            // 4. Build and display result details
+            let resultHTML = '';
+            if (data.unhealthy_ingredients?.length > 0) {
+                resultHTML += '<h4>Unhealthy Ingredients Found:</h4><ul>';
+                data.unhealthy_ingredients.forEach(item => { resultHTML += `<li>${item}</li>`; });
+                resultHTML += '</ul>';
+            }
+            if (data.healthy_ingredients?.length > 0) {
+                resultHTML += '<h4>Healthy Ingredients Found:</h4><ul>';
+                data.healthy_ingredients.forEach(item => { resultHTML += `<li>${item}</li>`; });
+                resultHTML += '</ul>';
+            }
+            if (resultHTML === '') {
+                resultHTML = '<p>No specific good or bad ingredients from our list were found.</p>';
+            }
+            resultDetailsDiv.innerHTML = resultHTML;
+        }
+
+        function displayError(message) {
+            scoreEmoji.textContent = '❌';
+            scoreTextDisplay.textContent = 'Error';
+            const errorColor = 'var(--score-color-vbad)';
+            scoreTextDisplay.style.color = errorColor;
+            dialRing.style.borderColor = errorColor;
+            root.style.setProperty('--glow-color', errorColor);
+            resultDetailsDiv.innerHTML = `<p style="color: red; text-align: center;">${message}</p>`;
+        }
+    </script>
+</body>
+</html>
+

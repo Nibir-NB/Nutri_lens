@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Nutri Lens</title>
+
+<style>
+
+body{
+font-family:Arial;
+background:#f2f2f2;
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
+}
+
+#main-container{
+background:white;
+padding:30px;
+border-radius:10px;
+width:400px;
+box-shadow:0 5px 20px rgba(0,0,0,0.2);
+text-align:center;
+}
+
+button{
+padding:10px 20px;
+border:none;
+background:#4CAF50;
+color:white;
+border-radius:5px;
+cursor:pointer;
+}
+
+#score-emoji{
+font-size:40px;
+margin-top:15px;
+}
+
+#score-text-display{
+font-size:20px;
+margin-top:10px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="main-container">
+
+<h2>Nutri Lens Food Analyzer</h2>
+
+<form id="upload-form">
+
+<input type="file" id="image-upload">
+
+<br><br>
+
+<span id="file-name">No file chosen</span>
+
+<br><br>
+
+<button id="analyze-button" disabled>Analyze</button>
+
+</form>
+
+<div id="score-emoji"></div>
+
+<div id="score-text-display"></div>
+
+<div id="result-details"></div>
+
+<br>
+
+<button id="reset-button">Reset</button>
+
+</div>
+
+
+<script>
+
+const form = document.getElementById('upload-form');
+const imageInput = document.getElementById('image-upload');
+const analyzeButton = document.getElementById('analyze-button');
+const fileNameSpan = document.getElementById('file-name');
+
+const scoreEmoji = document.getElementById('score-emoji');
+const resultDetailsDiv = document.getElementById('result-details');
+const resetButton = document.getElementById('reset-button');
+const scoreTextDisplay = document.getElementById('score-text-display');
+
+
+imageInput.addEventListener('change', () => {
+
+if(imageInput.files.length>0){
+
+analyzeButton.disabled=false;
+fileNameSpan.textContent=imageInput.files[0].name;
+
+}
+else{
+
+analyzeButton.disabled=true;
+fileNameSpan.textContent="No file chosen";
+
+}
+
+});
+
+
+form.addEventListener('submit', async (e)=>{
+
+e.preventDefault();
+
+const formData=new FormData();
+
+formData.append('image',imageInput.files[0]);
+
+scoreEmoji.textContent="🤔";
+scoreTextDisplay.textContent="Analyzing...";
+
+try{
+
+const response=await fetch('/analyze',{
+method:'POST',
+body:formData
+});
+
+const data=await response.json();
+
+if(response.ok){
+
+updateResultView(data);
+
+}else{
+
+displayError(data.error);
+
+}
+
+}catch(error){
+
+displayError("Server connection failed");
+
+}
+
+});
+
+
+resetButton.addEventListener('click',()=>{
+
+form.reset();
+analyzeButton.disabled=true;
+fileNameSpan.textContent="No file chosen";
+
+scoreEmoji.textContent="";
+scoreTextDisplay.textContent="";
+resultDetailsDiv.innerHTML="";
+
+});
+
+
+function updateResultView(data){
+
+const grade=data.grade;
+const health=data.health_level;
+
+let emoji="😐";
+
+if(grade==="A") emoji="😄";
+if(grade==="B") emoji="🙂";
+if(grade==="C") emoji="😐";
+if(grade==="D") emoji="😟";
+if(grade==="E") emoji="🤢";
+
+scoreEmoji.textContent=emoji;
+scoreTextDisplay.textContent=`Grade: ${grade} (${health})`;
+
+let resultHTML="";
+
+if(data.ingredients_detected?.length>0){
+
+const ingredients=data.ingredients_detected;
+
+const shortList=ingredients.slice(0,2);
+const remaining=ingredients.slice(2);
+
+resultHTML+="<h4>Detected Ingredients:</h4><ul>";
+
+shortList.forEach(item=>{
+resultHTML+=`<li>${item}</li>`;
+});
+
+if(remaining.length>0){
+
+resultHTML+=`<span id="more-ingredients" style="display:none">`;
+
+remaining.forEach(item=>{
+resultHTML+=`<li>${item}</li>`;
+});
+
+resultHTML+=`</span>`;
+
+resultHTML+=`<button id="see-more-btn">See More</button>`;
+
+}
+
+resultHTML+="</ul>";
+
+}
+
+resultDetailsDiv.innerHTML=resultHTML;
+
+const btn=document.getElementById("see-more-btn");
+
+if(btn){
+
+btn.addEventListener("click",()=>{
+
+const more=document.getElementById("more-ingredients");
+
+if(more.style.display==="none"){
+more.style.display="inline";
+btn.textContent="See Less";
+}else{
+more.style.display="none";
+btn.textContent="See More";
+}
+
+});
+
+}
+
+}
+
+
+function displayError(message){
+
+scoreEmoji.textContent="❌";
+scoreTextDisplay.textContent="Error";
+
+resultDetailsDiv.innerHTML=`<p style="color:red">${message}</p>`;
+
+}
+
+</script>
+
+</body>
+
+</html>
